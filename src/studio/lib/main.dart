@@ -3,9 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'blocs/event_catalog_cubit.dart';
 import 'blocs/contract_cubit.dart';
 import 'blocs/workflow_cubit.dart';
-import 'screens/event_catalog_screen.dart';
-import 'screens/contract_screen.dart';
-import 'screens/workflow_screen.dart';
+import 'router.dart';
 import 'theme.dart';
 
 void main() {
@@ -29,31 +27,10 @@ class QtCloudStudioApp extends StatelessWidget {
           create: (_) => WorkflowCubit(workflowsPath: 'assets/workflows.json'),
         ),
       ],
-      child: MaterialApp(
-        title: '量潮云协作目录',
+      child: MaterialApp.router(
+        title: '量潮云',
         theme: AppTheme.lightTheme,
-        initialRoute: '/events',
-        onGenerateRoute: (settings) {
-          switch (settings.name) {
-            case '/events':
-              return MaterialPageRoute(
-                builder: (_) => const EventCatalogScreen(),
-              );
-            case '/contract':
-              final eventId = settings.arguments as String? ?? '';
-              return MaterialPageRoute(
-                builder: (_) => ContractScreen(eventId: eventId),
-              );
-            case '/workflows':
-              return MaterialPageRoute(
-                builder: (_) => const WorkflowScreen(),
-              );
-            default:
-              return MaterialPageRoute(
-                builder: (_) => const EventCatalogScreen(),
-              );
-          }
-        },
+        routerConfig: AppRouter.create(),
       ),
     );
   }

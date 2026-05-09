@@ -12,11 +12,21 @@ class WorkflowScreen extends StatefulWidget {
   State<WorkflowScreen> createState() => _WorkflowScreenState();
 }
 
-class _WorkflowScreenState extends State<WorkflowScreen> {
+class _WorkflowScreenState extends State<WorkflowScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     context.read<WorkflowCubit>().loadWorkflows();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -35,18 +45,20 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
               return Column(
                 children: [
                   TabBar(
+                    controller: _tabController,
                     tabs: const [
                       Tab(text: '预置'),
                       Tab(text: '自定义'),
                     ],
-                    onTap: (index) {
-                      context.read<WorkflowCubit>().setTab(index == 0 ? 'preset' : 'custom');
-                    },
                   ),
                   Expanded(
-                    child: state.activeTab == 'preset'
-                        ? _PresetTab(workflows: state.workflows)
-                        : const _CustomTab(),
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _PresetTab(workflows: state.workflows),
+                        const _CustomTab(),
+                      ],
+                    ),
                   ),
                 ],
               );

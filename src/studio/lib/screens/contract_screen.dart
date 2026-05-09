@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../blocs/contract_cubit.dart';
+import '../blocs/event_catalog_cubit.dart';
 import '../models/contract.dart';
+import '../models/event.dart';
 import '../constants.dart';
 
 class ContractScreen extends StatefulWidget {
@@ -37,18 +39,67 @@ class _ContractScreenState extends State<ContractScreen> {
             case ContractStatus.error:
               return Center(child: Text('加载失败: ${state.errorMessage}'));
             case ContractStatus.loaded:
-              if (state.selectedContracts.isEmpty) {
-                return const Center(child: Text('无契约信息'));
-              }
+              final event = _findEvent(context);
+              final contracts = state.selectedContracts;
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  for (final contract in state.selectedContracts)
-                    _ContractSection(contract: contract),
+                  if (event != null) _EventHeader(event: event),
+                  if (contracts.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('该事件暂无订阅契约'),
+                      ),
+                    )
+                  else
+                    for (final contract in contracts)
+                      _ContractSection(contract: contract),
                 ],
               );
           }
         },
+      ),
+    );
+  }
+
+  Event? _findEvent(BuildContext context) {
+    final eventState = context.read<EventCatalogCubit>().state;
+    for (final e in eventState.events) {
+      if (e.id == widget.eventId) return e;
+    }
+    return null;
+  }
+}
+
+class _EventHeader extends StatelessWidget {
+  final Event event;
+
+  const _EventHeader({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(event.type,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text('来源域: ${domainLabel(event.source)}',
+                style: theme.textTheme.bodySmall),
+            Text('版本: ${event.version}',
+                style: theme.textTheme.bodySmall),
+            Text('方向: ${eventDirectionLabel(event.direction)}',
+                style: theme.textTheme.bodySmall),
+            const SizedBox(height: 8),
+            Text(event.description, style: theme.textTheme.bodyMedium),
+          ],
+        ),
       ),
     );
   }
@@ -66,6 +117,7 @@ class _ContractSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const SizedBox(height: 12),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -74,17 +126,30 @@ class _ContractSection extends StatelessWidget {
               children: [
                 Text('Schema', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                Text('事件ID: ${contract.eventId}'),
                 Text('订阅域: ${domainLabel(contract.subscriberDomain)}'),
                 Text('状态: ${contractStatusLabel(contract.status)}'),
                 const SizedBox(height: 12),
                 Text('字段列表', style: theme.textTheme.titleSmall),
                 const SizedBox(height: 4),
-                ...contract.versions.isNotEmpty
-                    ? _parseFields(contract.versions.last.schemaJson).map(
-                        (f) => Text('• ${f['name']} (${f['type']})${f['required'] == 'true' ? ' *' : ''}'),
-                      )
-                    : [const Text('无字段信息')],
+                if (contract.versions.isNotEmpty)
+                  ..._parseFields(contract.versions.last.schemaJson).map(
+                    (f) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Text('• ${f.name} ',
+                              style: theme.textTheme.bodySmall),
+                          Text('(${f.type})',
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: Colors.grey)),
+                          if (f.required)
+                            const Text(' *', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  const Text('无字段信息'),
               ],
             ),
           ),
@@ -119,6 +184,7 @@ class _ContractSection extends StatelessWidget {
                 Text('版本变更', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 ...contract.versions.map((v) => ListTile(
+                      dense: true,
                       leading: Icon(
                         v.status == 'active'
                             ? Icons.check_circle
@@ -128,7 +194,8 @@ class _ContractSection extends StatelessWidget {
                         color: contractStatusColor(v.status),
                       ),
                       title: Text(v.changeLog),
-                      subtitle: Text('v${v.id} · ${contractStatusLabel(v.status)}'),
+                      subtitle:
+                          Text('v${v.id} · ${contractStatusLabel(v.status)}'),
                     )),
                 const SizedBox(height: 8),
                 FilledButton.icon(
@@ -144,15 +211,17 @@ class _ContractSection extends StatelessWidget {
     );
   }
 
-  List<Map<String, String>> _parseFields(String schemaJson) {
+  List<SchemaField> _parseFields(String schemaJson) {
     try {
       final json = jsonDecode(schemaJson) as Map<String, dynamic>;
       final fields = json['fields'] as List<dynamic>;
-      return fields.map((f) => {
-            'name': f['name'].toString(),
-            'type': f['type'].toString(),
-            'required': f['required'].toString(),
-          }).toList();
+      return fields
+          .map((f) => SchemaField(
+                name: f['name'].toString(),
+                type: f['type'].toString(),
+                required: f['required'] == true,
+              ))
+          .toList();
     } catch (_) {
       return [];
     }

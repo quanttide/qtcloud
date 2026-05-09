@@ -1,47 +1,20 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'screens/event_catalog_screen.dart';
+import 'screens/contract_screen.dart';
+import 'screens/workflow_screen.dart';
 
 class RouteConfig {
   final String path;
   final String title;
-  final WidgetBuilder builder;
 
-  const RouteConfig({
-    required this.path,
-    required this.title,
-    required this.builder,
-  });
+  const RouteConfig({required this.path, required this.title});
 }
 
 const routeConfigs = <String, RouteConfig>{
-  'events': RouteConfig(
-    path: '/events',
-    title: '事件目录',
-    builder: _buildEventsScreen,
-  ),
-  'contract': RouteConfig(
-    path: '/contract/:eventId',
-    title: '契约管理',
-    builder: _buildContractScreen,
-  ),
-  'workflows': RouteConfig(
-    path: '/workflows',
-    title: '流程编排',
-    builder: _buildWorkflowsScreen,
-  ),
+  'events': RouteConfig(path: '/events', title: '事件目录'),
+  'contract': RouteConfig(path: '/contract/:eventId', title: '契约管理'),
+  'workflows': RouteConfig(path: '/workflows', title: '流程编排'),
 };
-
-Widget _buildEventsScreen(BuildContext context) {
-  throw UnimplementedError('Inject via BlocProvider');
-}
-
-Widget _buildContractScreen(BuildContext context) {
-  throw UnimplementedError('Inject via BlocProvider');
-}
-
-Widget _buildWorkflowsScreen(BuildContext context) {
-  throw UnimplementedError('Inject via BlocProvider');
-}
 
 class AppRouter {
   static GoRouter create() {
@@ -54,15 +27,21 @@ class AppRouter {
         ),
         GoRoute(
           path: '/events',
-          builder: (context, state) => routeConfigs['events']!.builder(context),
+          name: 'events',
+          builder: (context, state) => const EventCatalogScreen(),
         ),
         GoRoute(
           path: '/contract/:eventId',
-          builder: (context, state) => routeConfigs['contract']!.builder(context),
+          name: 'contract',
+          builder: (context, state) {
+            final eventId = state.pathParameters['eventId'] ?? '';
+            return ContractScreen(eventId: eventId);
+          },
         ),
         GoRoute(
           path: '/workflows',
-          builder: (context, state) => routeConfigs['workflows']!.builder(context),
+          name: 'workflows',
+          builder: (context, state) => const WorkflowScreen(),
         ),
       ],
     );

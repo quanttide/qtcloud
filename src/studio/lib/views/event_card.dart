@@ -34,6 +34,7 @@ class EventCard extends StatelessWidget {
             event.type,
             style: TextStyle(
               fontWeight: FontWeight.bold,
+              fontSize: 14,
               decoration: isDeprecated ? TextDecoration.lineThrough : null,
               color: isDeprecated ? Colors.grey : null,
             ),
@@ -43,33 +44,39 @@ class EventCard extends StatelessWidget {
             children: [
               Text(
                 domainLabel(event.source),
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 12),
               ),
               Text(
                 event.description,
-                style: theme.textTheme.bodySmall,
+                style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Badge(
                 backgroundColor: eventDirectionColor(event.direction),
-                textStyle: const TextStyle(color: Colors.white, fontSize: 11),
-                label: Text(eventDirectionLabel(event.direction)),
+                textStyle: const TextStyle(color: Colors.white, fontSize: 10),
+                label: Text(eventDirectionLabel(event.direction), style: const TextStyle(fontSize: 10)),
               ),
-              const SizedBox(height: 4),
-              Text(
-                event.version,
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-              Text(
-                '${event.subscriberCount} 订阅',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    event.version,
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
+                  ),
+                  Text(
+                    '${event.subscriberCount} 订阅',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
+                  ),
+                ],
               ),
             ],
           ),
