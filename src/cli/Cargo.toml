@@ -1,0 +1,11 @@
+[package]
+name = "qtcloud-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "qtcloud"
+path = "src/main.rs"
+
+[dependencies]
+qtcloud-devops-cli = "0.8"
