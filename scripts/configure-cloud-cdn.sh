@@ -22,11 +22,14 @@ aliyun cdn SetCdnDomainSSLCertificate \
   --SSLPri "$(cat "$CERT_DIR/*.quanttide.com.key")"
 
 echo "=== 2. 添加 DNS CNAME（已存在则跳过）==="
+# 注意：RRKeyWord 会误匹配前缀（如 _acme-challenge.cloud 的 TXT 记录），
+# 需在结果中精确过滤 RR=cloud 且 Type=CNAME
 EXISTING=$(aliyun alidns DescribeDomainRecords --DomainName quanttide.com --RRKeyWord cloud --ValueKeyWord "${DOMAIN}.w.kunlunaq.com" 2>/dev/null | python3 -c "
 import sys, json
 try:
     recs = json.load(sys.stdin).get('DomainRecords', {}).get('Record', [])
-    print(len(recs))
+    cnames = [r for r in recs if r.get('RR') == 'cloud' and r.get('Type') == 'CNAME']
+    print(len(cnames))
 except Exception:
     print(0)
 ")
