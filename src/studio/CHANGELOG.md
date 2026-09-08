@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## [0.1.0-alpha.2] - 2026-09-08
+
+### Added
+
+- CoWork 工作台占位骨架：核心对象定为 Workspace——流程 DAG 编排工作流程 + 单上下文；Workspace 间保持独立，先跑通量潮自己的工作流，跨 Workspace 委派为远期形态
+
+### Removed
+
+- 门户首页（产品矩阵导航）转移至 Site（React 门户，cloud.quanttide.com）；移除 url_launcher 依赖
+
 ## [0.1.0-alpha.1] - 2026-08-08
 
 **Added**

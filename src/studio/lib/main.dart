@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/portal_screen.dart';
+import 'screens/workspace_screen.dart';
 import 'theme.dart';
 
 void main() {
@@ -12,9 +12,9 @@ class QtCloudApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '量潮云',
+      title: '量潮云工作台',
       theme: AppTheme.lightTheme,
-      home: const PortalScreen(),
+      home: const WorkspaceScreen(),
     );
   }
 }

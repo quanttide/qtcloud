@@ -2,9 +2,12 @@
 # 构建 Flutter Web 版，上传到 OSS 发布桶（qtcloud-studio，IaC 见 manifests/terraform/studio.tf），
 # 并刷新 CDN 缓存。
 #
+# 门户职责已迁至 Site（cloud.quanttide.com，deploy-site.yml）；工作台改部署 cowork.cloud.quanttide.com
+# （CDN 域名待控制台新增，配置前刷新步骤会报错，属预期——见 manifests/terraform/README.md）。
+#
 # 对齐 qtclass 与 qtdata 的 deploy-studio.yml 模式：
 #   studio/* tag → Actions（flutter build web，ossutil cp）→ OSS 桶（qtcloud-studio，静态网站托管）
-#   → CDN（cloud.quanttide.com，泛域名证书 *.quanttide.com）→ 用户浏览器
+#   → CDN（cowork.cloud.quanttide.com，泛域名证书 *.quanttide.com）→ 用户浏览器
 #
 # 触发说明：用 tag 精确匹配 studio/ 前缀，避免其他 tag 误触发。
 #
@@ -25,7 +28,7 @@ concurrency:
 env:
   OSS_BUCKET: qtcloud-studio
   OSS_ENDPOINT: oss-cn-hangzhou.aliyuncs.com
-  CDN_DOMAIN: cloud.quanttide.com
+  CDN_DOMAIN: cowork.cloud.quanttide.com
 
 jobs:
   build-and-deploy:
