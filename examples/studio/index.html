@@ -1,13 +1,585 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="量潮云工作台 CoWork 模型交互 Demo" />
-    <title>量潮云工作台 Demo</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量潮云工作台 Demo</title>
+<style>
+:root {
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.65;
+  color: #1a1a2e;
+  background-color: #f4f5f9;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+button {
+  font: inherit; padding: 0.4rem 0.95rem;
+  border: 1px solid #c5c5d8; border-radius: 8px;
+  background: #fff; color: #333; cursor: pointer;
+}
+button:hover { border-color: #1565c0; color: #1565c0; }
+input, textarea {
+  font: inherit; padding: 0.4rem 0.75rem;
+  border: 1px solid #d5d5e0; border-radius: 8px;
+}
+.app { max-width: 1160px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+.head h1 { margin: 0; font-size: 0.9rem; font-weight: 500; color: #888; }
+.ws-name { margin: 0.1rem 0 0.4rem; font-size: 1.55rem; font-weight: 700; }
+.chips { margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip {
+  font-size: 0.82rem; color: #555; background: #eceef5;
+  border-radius: 999px; padding: 0.12rem 0.7rem;
+}
+
+.dispatch { margin-top: 1.4rem; display: flex; gap: 0.5rem; }
+.dispatch input { flex: 1; padding: 0.6rem 0.95rem; font-size: 0.95rem; }
+
+.layout {
+  margin-top: 1.4rem;
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem; align-items: start;
+}
+.view-tabs { display: none; gap: 0.5rem; margin-top: 1.2rem; }
+.view-tabs button.active { border-color: #1565c0; color: #1565c0; background: #e3ebfa; }
+.mini-count {
+  font-size: 0.75rem; border-radius: 999px; padding: 0 0.45rem;
+  background: #e3ebfa; color: #1565c0;
+}
+.mini-count.hot { background: #faeeda; color: #b06e10; }
+
+/* 方案文档面板：工作物主位 */
+.doc-panel {
+  border: 1px solid #e2e3ee; border-radius: 14px; background: #fff;
+  padding: 1.6rem 2rem 1.4rem;
+  box-shadow: 0 1px 4px rgba(26, 26, 46, 0.05);
+}
+.doc-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem;
+  border-bottom: 2px solid #1a1a2e; padding-bottom: 0.7rem;
+}
+.doc-head h2 { margin: 0; font-size: 1.35rem; }
+.version {
+  font-size: 0.85rem; font-weight: 700; color: #1565c0;
+  background: #e3ebfa; border-radius: 999px; padding: 0.1rem 0.7rem; flex-shrink: 0;
+}
+.section { padding: 1rem 0 0.9rem; border-bottom: 1px solid #eef0f6; }
+.section:last-of-type { border-bottom: none; }
+.section h3 {
+  margin: 0 0 0.35rem; font-size: 1.02rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.pending-chip {
+  font-size: 0.72rem; font-weight: 500; color: #b06e10;
+  background: #faeeda; border-radius: 999px; padding: 0.05rem 0.55rem;
+}
+.section-text { margin: 0; font-size: 0.95rem; color: #333; white-space: pre-wrap; }
+
+/* 修改对照：验收的对象 */
+.diff {
+  margin-top: 0.7rem; border: 1px solid #e8d9b8; border-radius: 10px;
+  background: #fffcf4; padding: 0.7rem 0.9rem;
+}
+.diff-title { margin: 0 0 0.45rem; font-size: 0.8rem; color: #8a6d1f; }
+.diff-before {
+  margin: 0; font-size: 0.9rem; color: #9a2b20;
+  text-decoration: line-through; text-decoration-color: rgba(154, 43, 32, 0.55);
+  background: #fdeeed; border-radius: 6px; padding: 0.35rem 0.6rem;
+}
+.diff-append { margin: 0; font-size: 0.8rem; color: #8a6d1f; }
+.diff-after {
+  margin: 0.4rem 0 0; font-size: 0.9rem; color: #1e6b3c;
+  background: #e9f5ec; border-radius: 6px; padding: 0.35rem 0.6rem;
+}
+.review-note { margin: 0.45rem 0 0; font-size: 0.8rem; color: #b06e10; }
+.diff .row { margin-top: 0.6rem; }
+.row { display: flex; gap: 0.5rem; }
+.reject-box { margin-top: 0.6rem; display: flex; gap: 0.5rem; }
+.reject-box input { flex: 1; }
+
+.history { margin-top: 1.1rem; padding-top: 0.8rem; border-top: 1px solid #eef0f6; }
+.history h3 { margin: 0 0 0.3rem; font-size: 0.85rem; color: #8a8a9a; }
+.history p { margin: 0.15rem 0; font-size: 0.8rem; color: #666; }
+
+/* 任务侧栏 */
+.col-tasks .zone { margin-bottom: 1.6rem; }
+.col-tasks h2 {
+  margin: 0 0 0.6rem; font-size: 0.98rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.count {
+  font-size: 0.75rem; background: #e3ebfa; color: #1565c0;
+  border-radius: 999px; padding: 0.02rem 0.55rem;
+}
+.count.hot { background: #faeeda; color: #b06e10; }
+.empty { margin: 0; color: #a5a5b5; font-size: 0.85rem; }
+.card {
+  border: 1px solid #e2e3ee; border-radius: 12px; background: #fff;
+  padding: 0.8rem 0.95rem; margin-bottom: 0.6rem;
+}
+.card h3 { margin: 0; font-size: 0.95rem; line-height: 1.45; }
+.meta { margin: 0.2rem 0 0; font-size: 0.8rem; color: #8a8a9a; }
+.verdict-card { border-left: 4px solid #e8a13d; background: #fffdf7; }
+.deliverable { margin: 0.4rem 0 0; font-size: 0.82rem; color: #555; }
+.card textarea { width: 100%; min-height: 2.8rem; margin-top: 0.5rem; resize: vertical; }
+.card .row { margin-top: 0.55rem; }
+.row-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+}
+.row-card > div { min-width: 0; }
+.auto-chip {
+  display: inline-block; margin-left: 0.4rem;
+  font-size: 0.68rem; color: #6b5b8a; background: #efeaf7;
+  border-radius: 999px; padding: 0.02rem 0.45rem;
+}
+.muted-card { opacity: 0.62; }
+
+button.primary { background: #1565c0; border-color: #1565c0; color: #fff; }
+button.primary:hover { background: #0d4f9e; color: #fff; }
+button.approve { background: #2c7a4b; border-color: #2c7a4b; color: #fff; }
+button.approve:hover { background: #23633c; color: #fff; }
+button.wide { width: 100%; margin-top: 0.55rem; }
+
+.banner {
+  margin-top: 1.4rem; padding: 0.9rem 1.2rem; border-radius: 12px;
+  background: #e2f2e8; border: 1px solid #9fd0b1;
+  color: #2c7a4b; font-weight: 600;
+}
+
+.toast {
+  position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%);
+  background: #1a1a2e; color: #fff; padding: 0.55rem 1.15rem;
+  border-radius: 999px; font-size: 0.85rem;
+  box-shadow: 0 4px 18px rgba(26, 26, 46, 0.25);
+  animation: toast-in 0.18s ease; z-index: 10;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.foot { margin-top: 2.5rem; font-size: 0.78rem; color: #a0a0b0; }
+.foot .link {
+  border: none; background: none; padding: 0; color: #a0a0b0;
+  text-decoration: underline; font-size: 0.78rem;
+}
+
+@media (max-width: 900px) {
+  .view-tabs { display: flex; }
+  .layout { grid-template-columns: 1fr; }
+  .layout[data-view='doc'] .col-tasks { display: none; }
+  .layout[data-view='tasks'] .col-doc { display: none; }
+}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="head">
+    <h1>量潮云工作台</h1>
+    <p class="ws-name">A 校数据治理项目</p>
+    <p class="chips">
+      <span class="chip">目标 完成项目方案与报价，形成可发给客户的定稿</span>
+      <span class="chip">边界 仅限本项目方案文档，不含合同与后续交付物</span>
+    </p>
+  </header>
+
+  <section class="dispatch">
+    <input id="intent" placeholder="说要什么，比如：增加客户确认环节"
+           onkeydown="if(event.key==='Enter')dispatch()">
+    <button class="primary" onclick="dispatch()">派活</button>
+  </section>
+
+  <div id="banner"></div>
+
+  <div class="view-tabs">
+    <button id="tab-doc" class="active" onclick="setView('doc')">方案 <span id="tab-doc-count"></span></button>
+    <button id="tab-tasks" onclick="setView('tasks')">任务</button>
+  </div>
+
+  <div class="layout" id="layout" data-view="doc">
+    <section class="col col-doc"><div class="doc-panel" id="doc-panel"></div></section>
+    <section class="col col-tasks"><div id="rail"></div></section>
+  </div>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <footer class="foot">
+    CoWork 模型原型 v3 · 拆解与云执行为演示节奏，修改内容是真的 ·
+    <button class="link" onclick="reset()">重置</button>
+  </footer>
+</main>
+
+<script>
+'use strict'
+// 概念契约的最小 schema，镜像工程标准的通用语言（Workspace / Task / Workflow）
+// v3 新增：Document（工作物本体）、Change（修订提案 = 验收对象）
+
+const STORAGE_KEY = 'qtcloud-studio-demo-v3'
+
+function seed() {
+  return {
+    doc: {
+      title: 'A 校数据治理项目方案',
+      version: 1,
+      sections: [
+        { id: 's1', title: '背景与目标', text: 'A 校经济学院累积了近十年的科研调查数据，格式分散、口径不一，需要建立统一的数据治理流程，支撑后续的课题申报与数据共享。' },
+        { id: 's2', title: '数据范围', text: '覆盖 5 个课题组的调查数据（约 12 万条记录）与 3 类仪器采集数据，不含人事与学生个人信息。' },
+        { id: 's3', title: '处理流程', text: '数据按月集中清洗，由学院管理员统一提交；清洗结果次月中旬以邮件形式反馈。' },
+        { id: 's4', title: '报价', text: '数据清洗与治理服务按人天计费，预估 60 人天，单价按量潮数据标准价目执行。' },
+        { id: 's5', title: '交付计划', text: '项目周期 30 天：第 1 周数据盘点，第 2-3 周清洗治理，第 4 周验收交接。' },
+      ],
+    },
+    history: [],
+    tasks: [
+      { id: 't1', name: '数据可行性评估', executor: '数据云', status: '执行中', dependsOn: [],
+        deliverable: '评估了客户数据源的更新频率与清洗窗口',
+        output: [{ sectionId: 's3',
+          before: '数据按月集中清洗，由学院管理员统一提交；清洗结果次月中旬以邮件形式反馈。',
+          after: '数据按周清洗：客户数据源每周更新一次，按月集中会造成积压；清洗结果当周内通过共享看板反馈。' }] },
+      { id: 't2', name: '报价核算', executor: '执行云', status: '待办', dependsOn: ['t1'],
+        deliverable: '按周清洗节奏重估了工时',
+        output: [{ sectionId: 's4',
+          before: '预估 60 人天，单价按量潮数据标准价目执行。',
+          after: '改为按周迭代交付，预估 45 人天（减少月末集中返工）；单价按量潮数据标准价目执行，总价对应下浮。' }] },
+      { id: 't3', name: '交付条款检查', executor: '议事云', status: '待办', dependsOn: ['t2'],
+        deliverable: '检查了交付周期承诺与数据源更新频率的匹配',
+        output: [{ sectionId: 's5',
+          before: '项目周期 30 天：第 1 周数据盘点，第 2-3 周清洗治理，第 4 周验收交接。',
+          after: '项目周期 6 周：第 1 周数据盘点，第 2-5 周按周迭代清洗治理（每周五向客户同步进展），第 6 周验收交接。' }] },
+      { id: 't4', name: '方案定稿检查', executor: '用户', status: '待办', dependsOn: ['t1', 't2', 't3'] },
+    ],
+  }
+}
+
+// ---------- 状态与持久化 ----------
+
+let state = load()
+let toastTimer = undefined
+const timers = []
+const autoScheduled = new Set()
+let rejecting = null
+let rejectNote = ''
+let view = 'doc'
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (e) { /* 损坏则重新播种 */ }
+  return seed()
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch (e) { /* file:// 下可能不可用 */ }
+}
+
+// ---------- 工具 ----------
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+function byId(id) { return state.tasks.find(t => t.id === id) }
+function depsLabel(t) {
+  if (!t.dependsOn.length) return '无'
+  return t.dependsOn.map(d => (byId(d) || {}).name || d).join('、')
+}
+function schedule(fn, ms) { timers.push(setTimeout(fn, ms)) }
+function toast(msg) {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.style.display = 'block'
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { el.style.display = 'none' }, 2600)
+}
+
+// ---------- 河床规则：状态由规则推进，人不搬运 ----------
+
+function scheduleDelivery(t) {
+  schedule(() => {
+    const cur = byId(t.id)
+    if (!cur || cur.status !== '执行中') return
+    cur.status = '待验收'
+    save(); render()
+    toast(`自动衔接 · ${t.executor} 交付了修改，等你拍板`)
+  }, 1800)
+}
+
+function flowCheck() {
+  state.tasks.forEach(t => {
+    if (t.executor === '用户' || autoScheduled.has(t.id)) return
+    const ready = t.status === '待办' && t.dependsOn.every(d => (byId(d) || {}).status === '完成')
+    if (!ready) return
+    autoScheduled.add(t.id)
+    schedule(() => {
+      const cur = byId(t.id)
+      if (!cur || cur.status !== '待办') return
+      cur.status = '执行中'
+      save(); render()
+      toast(`自动衔接 · ${t.executor} 开工（原为人工派单）`)
+      scheduleDelivery(t)
+    }, 700)
+  })
+}
+
+function boot() {
+  // 已在河中的云任务（首次 seed、刷新恢复、重置）补上交付节奏
+  state.tasks.filter(t => t.status === '执行中' && t.executor !== '用户')
+    .forEach(t => scheduleDelivery(t))
+  flowCheck()
+}
+
+// ---------- 动作 ----------
+
+function start(id) {
+  const t = byId(id)
+  if (!t || t.status !== '待办') return
+  t.status = '执行中'
+  save(); render()
+  toast(`已开始：${t.name}`)
+}
+
+function submit(id) {
+  const t = byId(id)
+  if (!t) return
+  if (!(t.deliverable || '').trim()) { toast('先填写交付说明，再提交验收'); return }
+  t.status = '待验收'
+  save(); render()
+  toast(`已提交验收：${t.name}`)
+}
+
+function approve(id) {
+  const t = byId(id)
+  if (!t) return
+  const changes = t.output || []
+  if (changes.length === 0) {
+    // 无修改的任务（如定稿检查）：只记完成，不动版本——版本号不撒谎
+    t.status = '完成'
+    save(); render()
+    toast(`已验收 ✓ ${t.name}`)
+    return
+  }
+  state.doc.version += 1
+  const v = state.doc.version
+  changes.forEach(c => {
+    const sec = state.doc.sections.find(s => s.id === c.sectionId)
+    if (sec) sec.text = c.before ? c.after : `${sec.text}\n${c.after}`
+  })
+  state.history.unshift({
+    version: v, taskName: t.name, executor: t.executor,
+    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+  })
+  t.status = '完成'
+  save(); render()
+  toast(`已验收 ✓ 方案更新至 v${v}`)
+}
+
+function startReject(id) {
+  rejecting = id
+  rejectNote = ''
+  render()
+}
+function cancelReject() {
+  rejecting = null
+  rejectNote = ''
+  render()
+}
+function confirmReject(id) {
+  const t = byId(id)
+  if (!t) return
+  const note = rejectNote.trim() || '未通过，请按意见修改后重新提交'
+  t.status = '执行中'
+  t.review = note
+  t.deliverable = `已按意见修改：${note}`
+  rejecting = null
+  rejectNote = ''
+  save(); render()
+  toast(`已驳回：${t.name}`)
+  if (t.executor !== '用户') {
+    schedule(() => {
+      const cur = byId(id)
+      if (!cur || cur.status !== '执行中') return
+      cur.status = '待验收'
+      save(); render()
+      toast(`自动衔接 · ${t.executor} 按意见修改后重新交付`)
+    }, 2400)
+  }
+}
+
+function setDeliverable(id, v) {
+  const t = byId(id)
+  if (!t) return
+  t.deliverable = v
+  save()
+}
+
+// 派活：意图库匹配，听不懂就直说
+function dispatch() {
+  const text = document.getElementById('intent').value.trim()
+  if (!text) return
+  let created = null
+  if (/确认/.test(text)) {
+    created = { id: 't' + Date.now(), name: '增加客户确认环节', executor: '用户', status: '待办', dependsOn: [],
+      output: [{ sectionId: 's5', before: '', after: '各阶段交付后需客户书面确认，方可进入下一阶段。' }] }
+  } else if (/英文|摘要/.test(text)) {
+    created = { id: 't' + Date.now(), name: '补充英文摘要', executor: '写作云', status: '待办', dependsOn: [],
+      output: [{ sectionId: 's1', before: '',
+        after: 'Abstract: Data governance for 5 research groups at A University — weekly cleansing, 45 person-days, 6-week delivery.' }] }
+  }
+  if (!created) {
+    toast('这句我还不会拆（demo 只听得懂「增加客户确认环节」这类意图）')
+    return
+  }
+  state.tasks.push(created)
+  save(); render()
+  document.getElementById('intent').value = ''
+  toast('已派活 · 拆解为 1 步')
+  setView('tasks')
+}
+
+function reset() {
+  timers.forEach(clearTimeout)
+  timers.length = 0
+  autoScheduled.clear()
+  rejecting = null
+  try { localStorage.removeItem(STORAGE_KEY) } catch (e) {}
+  state = seed()
+  save(); render()
+  boot()
+  toast('已重置为初始案例')
+}
+
+function setView(v) {
+  view = v
+  document.getElementById('layout').dataset.view = v
+  document.getElementById('tab-doc').className = v === 'doc' ? 'active' : ''
+  document.getElementById('tab-tasks').className = v === 'tasks' ? 'active' : ''
+}
+
+function gotoSection(sectionId) {
+  setView('doc')
+  setTimeout(() => {
+    const el = document.getElementById('sec-' + sectionId)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, 60)
+}
+
+// ---------- 渲染 ----------
+
+function renderDoc() {
+  const awaiting = state.tasks.filter(t => t.status === '待验收')
+  let html = `<div class="doc-head"><h2>${esc(state.doc.title)}</h2><span class="version">v${state.doc.version}</span></div>`
+  for (const sec of state.doc.sections) {
+    const pendings = awaiting.filter(t => (t.output || []).some(c => c.sectionId === sec.id))
+    html += `<article class="section" id="sec-${sec.id}"><h3>${esc(sec.title)}${pendings.length ? '<span class="pending-chip">有修改待验收</span>' : ''}</h3><p class="section-text">${esc(sec.text)}</p>`
+    for (const t of pendings) {
+      for (const c of t.output.filter(c => c.sectionId === sec.id)) {
+        html += `<div class="diff"><p class="diff-title">${esc(t.executor)} 提议修改 · 来自「${esc(t.name)}」</p>`
+        if (c.before) html += `<p class="diff-before">${esc(c.before)}</p>`
+        else html += `<p class="diff-append">在章节末尾追加：</p>`
+        html += `<p class="diff-after">${esc(c.after)}</p>`
+        if (t.review) html += `<p class="review-note">上轮意见：${esc(t.review)}</p>`
+        if (rejecting === t.id) {
+          html += `<div class="reject-box"><input id="reject-input" placeholder="驳回意见（回传给执行者）" value="${esc(rejectNote)}" oninput="rejectNote=this.value" onkeydown="if(event.key==='Enter')confirmReject('${t.id}')"><button class="primary" onclick="confirmReject('${t.id}')">确认驳回</button><button onclick="cancelReject()">取消</button></div>`
+        } else {
+          html += `<div class="row"><button class="approve" onclick="approve('${t.id}')">通过 ✓</button><button onclick="startReject('${t.id}')">驳回</button></div>`
+        }
+        html += `</div>`
+      }
+    }
+    html += `</article>`
+  }
+  if (state.history.length) {
+    html += `<div class="history"><h3>版本记录</h3>` + state.history.map(h =>
+      `<p>v${h.version} · ${esc(h.taskName)} · ${esc(h.executor)} · ${esc(h.time)}</p>`).join('') + `</div>`
+  }
+  document.getElementById('doc-panel').innerHTML = html
+  if (rejecting) {
+    const inp = document.getElementById('reject-input')
+    if (inp) inp.focus()
+  }
+}
+
+function renderRail() {
+  const tasks = state.tasks
+  const awaiting = tasks.filter(t => t.status === '待验收')
+  const running = tasks.filter(t => t.status === '执行中')
+  const ready = tasks.filter(t => t.status === '待办' && t.dependsOn.every(d => (byId(d) || {}).status === '完成'))
+  const blocked = tasks.filter(t => t.status === '待办' && !t.dependsOn.every(d => (byId(d) || {}).status === '完成'))
+  const done = tasks.filter(t => t.status === '完成')
+  let html = ''
+
+  html += `<div class="zone"><h2>等你拍板${awaiting.length ? `<span class="count hot">${awaiting.length}</span>` : ''}</h2>`
+  if (!awaiting.length) html += `<p class="empty">没有等你拍板的事 ✓</p>`
+  for (const t of awaiting) {
+    const hasDiff = (t.output || []).length > 0
+    html += `<article class="card verdict-card"><h3>${esc(t.name)}</h3><p class="meta">${
+      hasDiff
+        ? `${esc(t.executor)} 交付了修改 · 涉及「${t.output.map(c => esc(sectionTitle(c.sectionId))).join('、')}」`
+        : `${esc(t.executor)} 提交了交付说明，等你拍板`}</p>`
+    if (t.deliverable) html += `<p class="deliverable">${esc(t.deliverable)}</p>`
+    if (hasDiff) {
+      html += `<button class="primary wide" onclick="gotoSection('${t.output[0].sectionId}')">在方案中查看修改 →</button>`
+    } else {
+      html += `<div class="row"><button class="approve" onclick="approve('${t.id}')">通过 ✓</button><button onclick="startReject('${t.id}')">驳回</button></div>`
+    }
+    html += `</article>`
+  }
+  html += `</div>`
+
+  html += `<div class="zone"><h2>正在干${running.length ? `<span class="count">${running.length}</span>` : ''}</h2>`
+  if (!running.length) html += `<p class="empty">暂时没有</p>`
+  for (const t of running) {
+    if (t.executor !== '用户') {
+      html += `<article class="card"><h3>${esc(t.name)}</h3><p class="meta">${esc(t.executor)} 正在整理修改…<span class="auto-chip">自动衔接 · 原为人工搬运</span></p>`
+      if (t.review) html += `<p class="review-note">按意见改：${esc(t.review)}</p>`
+      html += `</article>`
+    } else {
+      html += `<article class="card"><h3>${esc(t.name)}</h3><textarea placeholder="交付说明" oninput="setDeliverable('${t.id}', this.value)">${esc(t.deliverable || '')}</textarea><div class="row"><button class="primary" onclick="submit('${t.id}')">提交验收</button></div></article>`
+    }
+  }
+  html += `</div>`
+
+  html += `<div class="zone"><h2>可以开始${ready.length ? `<span class="count">${ready.length}</span>` : ''}</h2>`
+  if (!ready.length) html += `<p class="empty">暂无可开工的任务</p>`
+  for (const t of ready) {
+    if (t.executor === '用户') {
+      html += `<article class="card row-card"><div><h3>${esc(t.name)}</h3><p class="meta">用户 · 上游 ${esc(depsLabel(t))}</p></div><button class="primary" onclick="start('${t.id}')">开始执行</button></article>`
+    } else {
+      html += `<article class="card muted-card"><div><h3>${esc(t.name)}</h3><p class="meta">就绪 · ${esc(t.executor)} 即将自动开工</p></div></article>`
+    }
+  }
+  for (const t of blocked) {
+    html += `<article class="card muted-card"><div><h3>${esc(t.name)}</h3><p class="meta">还没轮到 · 等 ${esc(depsLabel(t))}</p></div></article>`
+  }
+  html += `</div>`
+
+  if (done.length) {
+    html += `<div class="zone"><h2>已完成 ${done.length}</h2><p class="empty">${done.map(t => esc(t.name)).join(' · ')}</p></div>`
+  }
+  document.getElementById('rail').innerHTML = html
+}
+
+function sectionTitle(id) {
+  const sec = state.doc.sections.find(s => s.id === id)
+  return sec ? sec.title : id
+}
+
+function render() {
+  renderDoc()
+  renderRail()
+  const allDone = state.tasks.length > 0 && state.tasks.every(t => t.status === '完成')
+  document.getElementById('banner').innerHTML = allDone
+    ? '<section class="banner">🎉 方案定稿——全部任务验收通过</section>'
+    : ''
+  const n = state.tasks.filter(t => t.status === '待验收').length
+  document.getElementById('tab-doc-count').innerHTML = n ? `<span class="mini-count hot">${n}</span>` : ''
+  flowCheck()
+}
+
+// ---------- 启动 ----------
+
+render()
+boot()
+</script>
+</body>
 </html>
