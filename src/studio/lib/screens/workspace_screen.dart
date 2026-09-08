@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../models.dart';
+import '../models/document.dart';
+import '../models/task.dart';
+import '../models/workspace.dart';
 
 /// 工作台首屏：方案工作物居中，任务、验收、版本围绕它转。
 /// 河床规则：状态由规则推进（上游验收通过 → 下游云任务自动开工交付），
