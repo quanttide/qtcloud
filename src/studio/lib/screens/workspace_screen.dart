@@ -1,30 +1,997 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-/// 工作台占位骨架：门户已迁移至 Site（cloud.quanttide.com）。
-/// 核心模型：Workspace × 流程 DAG × 单上下文——先跑通量潮自己的工作流，
-/// Workspace 之间保持独立（见 ROADMAP.md）。
-class WorkspaceScreen extends StatelessWidget {
+import '../models.dart';
+
+/// 工作台首屏：方案工作物居中，任务、验收、版本围绕它转。
+/// 河床规则：状态由规则推进（上游验收通过 → 下游云任务自动开工交付），
+/// 人只在闸门（验收）出现；每个自动衔接都标注「原为人工搬运」。
+/// 交互对齐 examples/studio/index.html v3，设计见 docs/dev-guide/studio.md。
+class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({super.key});
 
   @override
+  State<WorkspaceScreen> createState() => _WorkspaceScreenState();
+}
+
+class _WorkspaceScreenState extends State<WorkspaceScreen> {
+  WorkspaceState ws = WorkspaceState.seed();
+  final _timers = <Timer>[];
+  final _autoScheduled = <String>{};
+  final _sectionKeys = <String, GlobalKey>{};
+  final _deliverableControllers = <String, TextEditingController>{};
+  final _rejectController = TextEditingController();
+  final _intentController = TextEditingController();
+  String? _rejectingId;
+  bool _narrowShowDoc = true;
+
+  bool get _allDone =>
+      ws.tasks.isNotEmpty && ws.tasks.every((t) => t.status == TaskStatus.done);
+
+  @override
+  void initState() {
+    super.initState();
+    // 已在河中的云任务（首次 seed、刷新恢复）补上交付节奏
+    for (final t in List<Task>.of(ws.tasks)) {
+      if (t.status == TaskStatus.running && t.executor != '用户') {
+        _scheduleDelivery(t);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    _rejectController.dispose();
+    _intentController.dispose();
+    for (final controller in _deliverableControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _schedule(Duration duration, void Function() fn) {
+    _timers.add(
+      Timer(duration, () {
+        if (mounted) fn();
+      }),
+    );
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  void _mutate(void Function() fn) {
+    setState(fn);
+    _flowCheck();
+  }
+
+  // 河床规则：就绪的云任务自动开工、交付，人不搬运状态。
+  // 回调里先校验最新状态，被驳回/重置后的旧定时器自动失效。
+  void _flowCheck() {
+    for (final t in ws.tasks) {
+      if (t.executor == '用户' || _autoScheduled.contains(t.id)) continue;
+      if (!ws.isReady(t)) continue;
+      _autoScheduled.add(t.id);
+      _schedule(const Duration(milliseconds: 700), () {
+        final cur = ws.byId(t.id);
+        if (cur == null || cur.status != TaskStatus.pending) return;
+        setState(() => cur.status = TaskStatus.running);
+        _toast('自动衔接 · ${t.executor} 开工（原为人工派单）');
+        _scheduleDelivery(cur);
+      });
+    }
+  }
+
+  void _scheduleDelivery(Task t) {
+    _schedule(const Duration(milliseconds: 1800), () {
+      final cur = ws.byId(t.id);
+      if (cur == null || cur.status != TaskStatus.running) return;
+      setState(() => cur.status = TaskStatus.reviewing);
+      _toast('自动衔接 · ${t.executor} 交付了修改，等你拍板');
+    });
+  }
+
+  void _start(Task t) {
+    _mutate(() => t.status = TaskStatus.running);
+    _toast('已开始：${t.name}');
+  }
+
+  void _submit(Task t) {
+    if ((t.deliverable ?? '').trim().isEmpty) {
+      _toast('先填写交付说明，再提交验收');
+      return;
+    }
+    _mutate(() => t.status = TaskStatus.reviewing);
+    _toast('已提交验收：${t.name}');
+  }
+
+  void _approve(Task t) {
+    final changes = t.output ?? const <Change>[];
+    if (changes.isEmpty) {
+      // 无修改的任务（如定稿检查）：只记完成，不动版本——版本号不撒谎
+      _mutate(() => t.status = TaskStatus.done);
+      _toast('已验收 ✓ ${t.name}');
+      return;
+    }
+    _mutate(() {
+      ws.doc.version += 1;
+      for (final c in changes) {
+        final idx = ws.doc.sections.indexWhere((s) => s.id == c.sectionId);
+        if (idx < 0) continue;
+        final sec = ws.doc.sections[idx];
+        sec.text = c.before.isEmpty ? '${sec.text}\n${c.after}' : c.after;
+      }
+      ws.history.insert(
+        0,
+        HistoryEntry(
+          version: ws.doc.version,
+          taskName: t.name,
+          executor: t.executor,
+          time: _now(),
+        ),
+      );
+      t.status = TaskStatus.done;
+    });
+    _toast('已验收 ✓ 方案更新至 v${ws.doc.version}');
+  }
+
+  void _startReject(Task t) {
+    setState(() {
+      _rejectingId = t.id;
+      _rejectController.clear();
+    });
+  }
+
+  void _confirmReject(Task t) {
+    final note = _rejectController.text.trim().isEmpty
+        ? '未通过，请按意见修改后重新提交'
+        : _rejectController.text.trim();
+    _mutate(() {
+      t.status = TaskStatus.running;
+      t.review = note;
+      t.deliverable = '已按意见修改：$note';
+      _rejectingId = null;
+      _rejectController.clear();
+    });
+    _toast('已驳回：${t.name}');
+    if (t.executor != '用户') {
+      _schedule(const Duration(milliseconds: 2400), () {
+        final cur = ws.byId(t.id);
+        if (cur == null || cur.status != TaskStatus.running) return;
+        setState(() => cur.status = TaskStatus.reviewing);
+        _toast('自动衔接 · ${t.executor} 按意见修改后重新交付');
+      });
+    }
+  }
+
+  // 派活：意图库匹配，听不懂就直说
+  void _dispatch() {
+    final text = _intentController.text.trim();
+    if (text.isEmpty) return;
+    Task? created;
+    if (RegExp(r'确认').hasMatch(text)) {
+      created = Task(
+        id: 't${DateTime.now().millisecondsSinceEpoch}',
+        name: '增加客户确认环节',
+        executor: '用户',
+        status: TaskStatus.pending,
+        dependsOn: [],
+        output: [
+          Change(sectionId: 's5', before: '', after: '各阶段交付后需客户书面确认，方可进入下一阶段。'),
+        ],
+      );
+    } else if (RegExp(r'英文|摘要').hasMatch(text)) {
+      created = Task(
+        id: 't${DateTime.now().millisecondsSinceEpoch}',
+        name: '补充英文摘要',
+        executor: '写作云',
+        status: TaskStatus.pending,
+        dependsOn: [],
+        output: [
+          Change(
+            sectionId: 's1',
+            before: '',
+            after:
+                'Abstract: Data governance for 5 research groups at A '
+                'University — weekly cleansing, 45 person-days, 6-week delivery.',
+          ),
+        ],
+      );
+    }
+    if (created == null) {
+      _toast('这句我还不会拆（demo 只听得懂「增加客户确认环节」这类意图）');
+      return;
+    }
+    final task = created;
+    _mutate(() => ws.tasks.add(task));
+    _intentController.clear();
+    _toast('已派活 · 拆解为 1 步');
+    _narrowShowDoc = false;
+  }
+
+  void _reset() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    _timers.clear();
+    _autoScheduled.clear();
+    _rejectingId = null;
+    setState(() => ws = WorkspaceState.seed());
+    _toast('已重置为初始案例');
+    for (final t in List<Task>.of(ws.tasks)) {
+      if (t.status == TaskStatus.running && t.executor != '用户') {
+        _scheduleDelivery(t);
+      }
+    }
+  }
+
+  String _now() {
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _depsLabel(Task t) => t.dependsOn.isEmpty
+      ? '无'
+      : t.dependsOn.map((d) => ws.byId(d)?.name ?? d).join('、');
+
+  String _sectionTitle(String id) => ws.doc.sections
+      .firstWhere(
+        (s) => s.id == id,
+        orElse: () => DocSection(id: id, title: id, text: ''),
+      )
+      .title;
+
+  void _gotoSection(String sectionId) {
+    setState(() => _narrowShowDoc = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _sectionKeys[sectionId];
+      final ctx = key?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.25,
+        );
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('量潮云工作台')),
-      body: Center(
+      appBar: AppBar(
+        title: Text(
+          ws.name,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          IconButton(
+            tooltip: '重置为初始案例',
+            icon: const Icon(Icons.restart_alt),
+            onPressed: _reset,
+          ),
+        ],
+      ),
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('任务工作台规划中', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Workspace · 流程 DAG · 单上下文',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [_chip('目标 ${ws.goal}'), _chip('边界 ${ws.boundary}')],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _intentController,
+                      onSubmitted: (_) => _dispatch(),
+                      decoration: const InputDecoration(
+                        hintText: '说要什么，比如：增加客户确认环节',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(onPressed: _dispatch, child: const Text('派活')),
+                ],
+              ),
+            ),
+            if (_allDone)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2F2E8),
+                  border: Border.all(color: const Color(0xFF9FD0B1)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '🎉 方案定稿——全部任务验收通过',
+                  style: TextStyle(
+                    color: Color(0xFF2C7A4B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 900;
+                  if (wide) {
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 3, child: _docPanel()),
+                          const SizedBox(width: 16),
+                          SizedBox(width: 320, child: _rail()),
+                        ],
+                      ),
+                    );
+                  }
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: ToggleButtons(
+                          isSelected: [_narrowShowDoc, !_narrowShowDoc],
+                          onPressed: (i) =>
+                              setState(() => _narrowShowDoc = i == 0),
+                          borderRadius: BorderRadius.circular(8),
+                          constraints: const BoxConstraints(
+                            minHeight: 36,
+                            minWidth: 90,
+                          ),
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('方案'),
+                            ),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('任务'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: _narrowShowDoc ? _docPanel() : _rail()),
+                    ],
+                  );
+                },
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _docPanel() {
+    final awaiting = ws.tasks
+        .where((t) => t.status == TaskStatus.reviewing)
+        .toList();
+    return SingleChildScrollView(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFE2E3EE)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    ws.doc.title,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE3EBFA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'v${ws.doc.version}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1565C0),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            for (final sec in ws.doc.sections) _section(sec, awaiting),
+            if (ws.history.isNotEmpty) ...[
+              const Divider(),
+              const Text(
+                '版本记录',
+                style: TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
+              ),
+              for (final h in ws.history)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'v${h.version} · ${h.taskName} · ${h.executor} · ${h.time}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF666666),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _section(DocSection sec, List<Task> awaiting) {
+    final key = _sectionKeys.putIfAbsent(sec.id, () => GlobalKey());
+    final pendings = awaiting
+        .where((t) => (t.output ?? []).any((c) => c.sectionId == sec.id))
+        .toList();
+    return KeyedSubtree(
+      key: key,
+      child: Container(
+        padding: const EdgeInsets.only(top: 14, bottom: 12),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFFEEF0F6))),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  sec.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (pendings.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAEEDA),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      '有修改待验收',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFB06E10)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              sec.text,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF333333)),
+            ),
+            for (final t in pendings)
+              for (final c in (t.output ?? []).where(
+                (c) => c.sectionId == sec.id,
+              ))
+                _diffBlock(t, c),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _diffBlock(Task t, Change c) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF4),
+        border: Border.all(color: const Color(0xFFE8D9B8)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${t.executor} 提议修改 · 来自「${t.name}」',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8A6D1F)),
+          ),
+          const SizedBox(height: 6),
+          if (c.before.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDEEED),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                c.before,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF9A2B20),
+                  decoration: TextDecoration.lineThrough,
+                  decorationColor: Color(0x889A2B20),
+                ),
+              ),
+            )
+          else
+            const Text(
+              '在章节末尾追加：',
+              style: TextStyle(fontSize: 12, color: Color(0xFF8A6D1F)),
+            ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9F5EC),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              c.after,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF1E6B3C)),
+            ),
+          ),
+          if (t.review != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '上轮意见：${t.review}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB06E10)),
+              ),
+            ),
+          if (_rejectingId == t.id)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    autofocus: true,
+                    controller: _rejectController,
+                    onSubmitted: (_) => _confirmReject(t),
+                    decoration: const InputDecoration(
+                      hintText: '驳回意见（回传给执行者）',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => _confirmReject(t),
+                  child: const Text('确认驳回'),
+                ),
+                TextButton(onPressed: _cancelReject, child: const Text('取消')),
+              ],
+            )
+          else
+            Row(
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2C7A4B),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _approve(t),
+                  child: const Text('通过 ✓'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _startReject(t),
+                  child: const Text('驳回'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _cancelReject() {
+    setState(() {
+      _rejectingId = null;
+      _rejectController.clear();
+    });
+  }
+
+  Widget _rail() {
+    final awaiting = ws.tasks
+        .where((t) => t.status == TaskStatus.reviewing)
+        .toList();
+    final running = ws.tasks
+        .where((t) => t.status == TaskStatus.running)
+        .toList();
+    final ready = ws.tasks.where(ws.isReady).toList();
+    final blocked = ws.tasks
+        .where((t) => t.status == TaskStatus.pending && !ws.isReady(t))
+        .toList();
+    final done = ws.tasks.where((t) => t.status == TaskStatus.done).toList();
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _zone(
+            '等你拍板',
+            count: awaiting.length,
+            hot: true,
+            child: awaiting.isEmpty
+                ? const _Empty('没有等你拍板的事 ✓')
+                : Column(children: [for (final t in awaiting) _verdictCard(t)]),
+          ),
+          _zone(
+            '正在干',
+            count: running.length,
+            child: running.isEmpty
+                ? const _Empty('暂时没有')
+                : Column(
+                    children: [
+                      for (final t in running)
+                        t.executor != '用户'
+                            ? _card(
+                                title: t.name,
+                                metaSpan: [
+                                  TextSpan(text: '${t.executor} 正在整理修改…'),
+                                  _autoChipSpan(),
+                                ],
+                                extra: t.review == null
+                                    ? null
+                                    : Text(
+                                        '按意见改：${t.review}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFFB06E10),
+                                        ),
+                                      ),
+                              )
+                            : _card(
+                                title: t.name,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    TextField(
+                                      controller: _deliverableController(t),
+                                      onChanged: (v) => t.deliverable = v,
+                                      decoration: const InputDecoration(
+                                        hintText: '交付说明',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    FilledButton(
+                                      onPressed: () => _submit(t),
+                                      child: const Text('提交验收'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                    ],
+                  ),
+          ),
+          _zone(
+            '可以开始',
+            count: ready.length,
+            child: Column(
+              children: [
+                if (ready.isEmpty) const _Empty('暂无可开工的任务'),
+                for (final t in ready)
+                  t.executor == '用户'
+                      ? _rowCard(
+                          t,
+                          '用户 · 上游 ${_depsLabel(t)}',
+                          FilledButton(
+                            onPressed: () => _start(t),
+                            child: const Text('开始执行'),
+                          ),
+                        )
+                      : _card(title: t.name, meta: '就绪 · ${t.executor} 即将自动开工'),
+                for (final t in blocked)
+                  _card(
+                    title: t.name,
+                    meta: '还没轮到 · 等 ${_depsLabel(t)}',
+                    muted: true,
+                  ),
+              ],
+            ),
+          ),
+          if (done.isNotEmpty)
+            _zone(
+              '已完成 ${done.length}',
+              child: _Empty(done.map((t) => t.name).join(' · ')),
+            ),
+        ],
+      ),
+    );
+  }
+
+  TextEditingController _deliverableController(Task t) {
+    return _deliverableControllers.putIfAbsent(
+      t.id,
+      () => TextEditingController(text: t.deliverable ?? ''),
+    );
+  }
+
+  Widget _verdictCard(Task t) {
+    final hasDiff = (t.output ?? []).isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF7),
+        border: const Border(
+          left: BorderSide(color: Color(0xFFE8A13D), width: 3),
+          top: BorderSide(color: Color(0xFFE2E3EE)),
+          right: BorderSide(color: Color(0xFFE2E3EE)),
+          bottom: BorderSide(color: Color(0xFFE2E3EE)),
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t.name,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            hasDiff
+                ? '${t.executor} 交付了修改 · 涉及「${(t.output ?? []).map((c) => _sectionTitle(c.sectionId)).join('、')}」'
+                : '${t.executor} 提交了交付说明，等你拍板',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
+          ),
+          if (t.deliverable != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                t.deliverable!,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF555555)),
+              ),
+            ),
+          if (hasDiff)
+            SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: FilledButton(
+                  onPressed: () => _gotoSection(t.output![0].sectionId),
+                  child: const Text('在方案中查看修改 →'),
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2C7A4B),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _approve(t),
+                  child: const Text('通过 ✓'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _startReject(t),
+                  child: const Text('驳回'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _card({
+    required String title,
+    String? meta,
+    List<InlineSpan>? metaSpan,
+    Widget? child,
+    Widget? extra,
+    bool muted = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E3EE)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 14)),
+          if (meta != null)
+            Text(
+              meta,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
+            ),
+          if (metaSpan != null)
+            Text.rich(
+              TextSpan(children: metaSpan),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
+            ),
+          if (extra != null)
+            Padding(padding: const EdgeInsets.only(top: 4), child: extra),
+          if (child != null)
+            Padding(padding: const EdgeInsets.only(top: 6), child: child),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowCard(Task t, String meta, Widget action) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E3EE)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.name, style: const TextStyle(fontSize: 14)),
+                Text(
+                  meta,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8A8A9A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          action,
+        ],
+      ),
+    );
+  }
+
+  Widget _zone(
+    String title, {
+    required Widget child,
+    int count = 0,
+    bool hot = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  decoration: BoxDecoration(
+                    color: hot
+                        ? const Color(0xFFFAEEDA)
+                        : const Color(0xFFE3EBFA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: hot
+                          ? const Color(0xFFB06E10)
+                          : const Color(0xFF1565C0),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECEEF5),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF555555)),
+      ),
+    );
+  }
+
+  InlineSpan _autoChipSpan() {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Container(
+        margin: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFEAF7),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: const Text(
+          '自动衔接 · 原为人工搬运',
+          style: TextStyle(fontSize: 12, color: Color(0xFF6B5B8A)),
+        ),
+      ),
+    );
+  }
+}
+
+class _Empty extends StatelessWidget {
+  const _Empty(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 13, color: Color(0xFFA5A5B5)),
       ),
     );
   }

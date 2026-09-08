@@ -1,10 +1,16 @@
 # CHANGELOG
 
-## [0.1.0-alpha.2] - 2026-09-08
+## [Unreleased]
 
 ### Added
 
 - CoWork 工作台占位骨架：核心对象定为 Workspace——流程 DAG 编排工作流程 + 单上下文；Workspace 间保持独立，先跑通量潮自己的工作流，跨 Workspace 委派为远期形态
+- 工作台首屏：从 examples/studio v3 移植 CoWork 交互——方案工作物居中、内联 diff 验收（通过合入 / 驳回回传意见）、版本记录、河床自动流转（就绪云任务自动开工交付，自动衔接标注「原为人工搬运」）、意图派活（预置意图，听不懂直说）
+- 模型层 lib/models.dart：Doc / Change / Task / WorkspaceState（概念契约最小 schema，含 seed 数据）
+
+### Changed
+
+- WorkspaceScreen 由占位骨架替换为可交互首屏（内存态，持久化待接）
 
 ### Removed
 
