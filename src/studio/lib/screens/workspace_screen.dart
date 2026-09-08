@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
+import '../models/artifact.dart';
 import '../models/document.dart';
 import '../models/task.dart';
+import '../models/workflow.dart';
 import '../models/workspace.dart';
 
 /// 工作台首屏：方案工作物居中，任务、验收、版本围绕它转。
@@ -18,7 +22,9 @@ class WorkspaceScreen extends StatefulWidget {
 }
 
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
-  WorkspaceState ws = WorkspaceState.seed();
+  late Workspace ws;
+  bool _loaded = false;
+  String? _error;
   final _timers = <Timer>[];
   final _autoScheduled = <String>{};
   final _sectionKeys = <String, GlobalKey>{};
@@ -29,16 +35,35 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   bool _narrowShowDoc = true;
 
   bool get _allDone =>
-      ws.tasks.isNotEmpty && ws.tasks.every((t) => t.status == TaskStatus.done);
+      ws.workflow.tasks.isNotEmpty &&
+      ws.workflow.tasks.every((t) => t.status == TaskStatus.done);
 
   @override
   void initState() {
     super.initState();
-    // 已在河中的云任务（首次 seed、刷新恢复）补上交付节奏
-    for (final t in List<Task>.of(ws.tasks)) {
-      if (t.status == TaskStatus.running && t.executor != '用户') {
-        _scheduleDelivery(t);
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await rootBundle.loadString('assets/workspace_seed.json');
+      final loaded = _workspaceFromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      if (!mounted) return;
+      setState(() {
+        ws = loaded;
+        _loaded = true;
+      });
+      // 已在河中的云任务（首次装载、刷新恢复）补上交付节奏
+      for (final t in List<Task>.of(ws.workflow.tasks)) {
+        if (t.status == TaskStatus.running && t.executor != '用户') {
+          _scheduleDelivery(t);
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '契约数据加载失败：$e');
     }
   }
 
@@ -75,22 +100,17 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       );
   }
 
-  void _mutate(void Function() fn) {
-    setState(fn);
-    _flowCheck();
-  }
-
   // 河床规则：就绪的云任务自动开工、交付，人不搬运状态。
   // 回调里先校验最新状态，被驳回/重置后的旧定时器自动失效。
   void _flowCheck() {
-    for (final t in ws.tasks) {
-      if (t.executor == '用户' || _autoScheduled.contains(t.id)) continue;
-      if (!ws.isReady(t)) continue;
+    for (final t in ws.workflow.readyCloudTasks()) {
+      if (_autoScheduled.contains(t.id)) continue;
       _autoScheduled.add(t.id);
       _schedule(const Duration(milliseconds: 700), () {
-        final cur = ws.byId(t.id);
+        final cur = ws.workflow.byId(t.id);
         if (cur == null || cur.status != TaskStatus.pending) return;
-        setState(() => cur.status = TaskStatus.running);
+        if (!cur.start()) return;
+        setState(() {});
         _toast('自动衔接 · ${t.executor} 开工（原为人工派单）');
         _scheduleDelivery(cur);
       });
@@ -99,55 +119,35 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   void _scheduleDelivery(Task t) {
     _schedule(const Duration(milliseconds: 1800), () {
-      final cur = ws.byId(t.id);
+      final cur = ws.workflow.byId(t.id);
       if (cur == null || cur.status != TaskStatus.running) return;
-      setState(() => cur.status = TaskStatus.reviewing);
+      if (!cur.deliver()) return;
+      setState(() {});
       _toast('自动衔接 · ${t.executor} 交付了修改，等你拍板');
     });
   }
 
   void _start(Task t) {
-    _mutate(() => t.status = TaskStatus.running);
+    if (!t.start()) return;
+    setState(() {});
     _toast('已开始：${t.name}');
   }
 
   void _submit(Task t) {
-    if ((t.deliverable ?? '').trim().isEmpty) {
+    if (!t.deliver()) {
       _toast('先填写交付说明，再提交验收');
       return;
     }
-    _mutate(() => t.status = TaskStatus.reviewing);
+    setState(() {});
     _toast('已提交验收：${t.name}');
   }
 
   void _approve(Task t) {
-    final changes = t.output ?? const <Change>[];
-    if (changes.isEmpty) {
-      // 无修改的任务（如定稿检查）：只记完成，不动版本——版本号不撒谎
-      _mutate(() => t.status = TaskStatus.done);
-      _toast('已验收 ✓ ${t.name}');
-      return;
-    }
-    _mutate(() {
-      ws.doc.version += 1;
-      for (final c in changes) {
-        final idx = ws.doc.sections.indexWhere((s) => s.id == c.sectionId);
-        if (idx < 0) continue;
-        final sec = ws.doc.sections[idx];
-        sec.text = c.before.isEmpty ? '${sec.text}\n${c.after}' : c.after;
-      }
-      ws.history.insert(
-        0,
-        HistoryEntry(
-          version: ws.doc.version,
-          taskName: t.name,
-          executor: t.executor,
-          time: _now(),
-        ),
-      );
-      t.status = TaskStatus.done;
-    });
-    _toast('已验收 ✓ 方案更新至 v${ws.doc.version}');
+    final hadChanges = (t.output ?? []).isNotEmpty;
+    if (!ws.workflow.approve(t)) return;
+    setState(() {});
+    _toast(hadChanges ? '已验收 ✓ 方案更新至 v${ws.doc.version}' : '已验收 ✓ ${t.name}');
+    _flowCheck();
   }
 
   void _startReject(Task t) {
@@ -161,94 +161,122 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final note = _rejectController.text.trim().isEmpty
         ? '未通过，请按意见修改后重新提交'
         : _rejectController.text.trim();
-    _mutate(() {
-      t.status = TaskStatus.running;
-      t.review = note;
-      t.deliverable = '已按意见修改：$note';
+    if (!t.reject(note)) return;
+    setState(() {
       _rejectingId = null;
       _rejectController.clear();
     });
     _toast('已驳回：${t.name}');
     if (t.executor != '用户') {
       _schedule(const Duration(milliseconds: 2400), () {
-        final cur = ws.byId(t.id);
+        final cur = ws.workflow.byId(t.id);
         if (cur == null || cur.status != TaskStatus.running) return;
-        setState(() => cur.status = TaskStatus.reviewing);
+        if (!cur.deliver()) return;
+        setState(() {});
         _toast('自动衔接 · ${t.executor} 按意见修改后重新交付');
       });
     }
   }
 
-  // 派活：意图库匹配，听不懂就直说
+  // 派活：意图库匹配（demo 为预排剧本），听不懂就直说
   void _dispatch() {
-    final text = _intentController.text.trim();
-    if (text.isEmpty) return;
-    Task? created;
-    if (RegExp(r'确认').hasMatch(text)) {
-      created = Task(
-        id: 't${DateTime.now().millisecondsSinceEpoch}',
-        name: '增加客户确认环节',
-        executor: '用户',
-        status: TaskStatus.pending,
-        dependsOn: [],
-        output: [
-          Change(sectionId: 's5', before: '', after: '各阶段交付后需客户书面确认，方可进入下一阶段。'),
-        ],
-      );
-    } else if (RegExp(r'英文|摘要').hasMatch(text)) {
-      created = Task(
-        id: 't${DateTime.now().millisecondsSinceEpoch}',
-        name: '补充英文摘要',
-        executor: '写作云',
-        status: TaskStatus.pending,
-        dependsOn: [],
-        output: [
-          Change(
-            sectionId: 's1',
-            before: '',
-            after:
-                'Abstract: Data governance for 5 research groups at A '
-                'University — weekly cleansing, 45 person-days, 6-week delivery.',
-          ),
-        ],
-      );
-    }
+    final created = ws.workflow.dispatchIntent(_intentController.text);
     if (created == null) {
       _toast('这句我还不会拆（demo 只听得懂「增加客户确认环节」这类意图）');
       return;
     }
-    final task = created;
-    _mutate(() => ws.tasks.add(task));
     _intentController.clear();
+    setState(() {});
     _toast('已派活 · 拆解为 1 步');
     _narrowShowDoc = false;
+    _flowCheck();
   }
 
-  void _reset() {
+  Future<void> _reset() async {
     for (final timer in _timers) {
       timer.cancel();
     }
     _timers.clear();
     _autoScheduled.clear();
     _rejectingId = null;
-    setState(() => ws = WorkspaceState.seed());
+    try {
+      final raw = await rootBundle.loadString('assets/workspace_seed.json');
+      final loaded = _workspaceFromJson(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
+      if (!mounted) return;
+      setState(() => ws = loaded);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '契约数据加载失败：$e');
+      return;
+    }
     _toast('已重置为初始案例');
-    for (final t in List<Task>.of(ws.tasks)) {
+    for (final t in List<Task>.of(ws.workflow.tasks)) {
       if (t.status == TaskStatus.running && t.executor != '用户') {
         _scheduleDelivery(t);
       }
     }
   }
 
-  String _now() {
-    final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}';
+  String _fmtTime(DateTime time) =>
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+  /// Workspace 契约解析：数据在 assets/workspace_seed.json，
+  /// 代码读契约不读硬编码（数据驱动的产品研发）。
+  /// 云的修订提案为预排剧本；正式实现由协作目录 + LLM 承担。
+  Workspace _workspaceFromJson(Map<String, dynamic> json) {
+    final docJson = json['doc'] as Map<String, dynamic>;
+    final doc = Doc(
+      title: docJson['title'] as String,
+      version: docJson['version'] as int,
+      sections: (docJson['sections'] as List)
+          .map(
+            (s) => DocSection(
+              id: s['id'] as String,
+              title: s['title'] as String,
+              text: s['text'] as String,
+            ),
+          )
+          .toList(),
+    );
+
+    final tasks = (json['tasks'] as List)
+        .map(
+          (t) => Task(
+            id: t['id'] as String,
+            name: t['name'] as String,
+            executor: t['executor'] as String,
+            status: TaskStatus.values.byName(t['status'] as String),
+            dependsOn: (t['dependsOn'] as List).cast<String>(),
+            deliverable: t['deliverable'] as String?,
+            output: (t['output'] as List?)
+                ?.map(
+                  (c) => Change(
+                    target: c['target'] as String,
+                    before: c['before'] as String,
+                    after: c['after'] as String,
+                  ),
+                )
+                .toList(),
+          ),
+        )
+        .toList();
+
+    final workflow = Workflow(tasks: tasks, artifact: doc);
+
+    return Workspace(
+      name: json['name'] as String,
+      goal: json['goal'] as String,
+      boundary: json['boundary'] as String,
+      doc: doc,
+      workflow: workflow,
+    );
   }
 
   String _depsLabel(Task t) => t.dependsOn.isEmpty
       ? '无'
-      : t.dependsOn.map((d) => ws.byId(d)?.name ?? d).join('、');
+      : t.dependsOn.map((d) => ws.workflow.byId(d)?.name ?? d).join('、');
 
   String _sectionTitle(String id) => ws.doc.sections
       .firstWhere(
@@ -274,6 +302,26 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loaded) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('量潮云工作台')),
+        body: Center(
+          child: _error == null
+              ? const CircularProgressIndicator()
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _error!,
+                      style: const TextStyle(color: Color(0xFF9A2B20)),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(onPressed: _load, child: const Text('重试')),
+                  ],
+                ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -395,7 +443,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Widget _docPanel() {
-    final awaiting = ws.tasks
+    final awaiting = ws.workflow.tasks
         .where((t) => t.status == TaskStatus.reviewing)
         .toList();
     return SingleChildScrollView(
@@ -444,17 +492,17 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ),
             const SizedBox(height: 4),
             for (final sec in ws.doc.sections) _section(sec, awaiting),
-            if (ws.history.isNotEmpty) ...[
+            if (ws.doc.revisions.isNotEmpty) ...[
               const Divider(),
               const Text(
                 '版本记录',
                 style: TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
               ),
-              for (final h in ws.history)
+              for (final r in ws.doc.revisions)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    'v${h.version} · ${h.taskName} · ${h.executor} · ${h.time}',
+                    'v${r.version} · ${r.taskName} · ${r.executor} · ${_fmtTime(r.time)}',
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF666666),
@@ -471,7 +519,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Widget _section(DocSection sec, List<Task> awaiting) {
     final key = _sectionKeys.putIfAbsent(sec.id, () => GlobalKey());
     final pendings = awaiting
-        .where((t) => (t.output ?? []).any((c) => c.sectionId == sec.id))
+        .where((t) => (t.output ?? []).any((c) => c.target == sec.id))
         .toList();
     return KeyedSubtree(
       key: key,
@@ -514,9 +562,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               style: const TextStyle(fontSize: 14, color: Color(0xFF333333)),
             ),
             for (final t in pendings)
-              for (final c in (t.output ?? []).where(
-                (c) => c.sectionId == sec.id,
-              ))
+              for (final c in (t.output ?? []).where((c) => c.target == sec.id))
                 _diffBlock(t, c),
           ],
         ),
@@ -639,17 +685,19 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Widget _rail() {
-    final awaiting = ws.tasks
+    final awaiting = ws.workflow.tasks
         .where((t) => t.status == TaskStatus.reviewing)
         .toList();
-    final running = ws.tasks
+    final running = ws.workflow.tasks
         .where((t) => t.status == TaskStatus.running)
         .toList();
-    final ready = ws.tasks.where(ws.isReady).toList();
-    final blocked = ws.tasks
-        .where((t) => t.status == TaskStatus.pending && !ws.isReady(t))
+    final ready = ws.workflow.tasks.where(ws.workflow.isReady).toList();
+    final blocked = ws.workflow.tasks
+        .where((t) => t.status == TaskStatus.pending && !ws.workflow.isReady(t))
         .toList();
-    final done = ws.tasks.where((t) => t.status == TaskStatus.done).toList();
+    final done = ws.workflow.tasks
+        .where((t) => t.status == TaskStatus.done)
+        .toList();
 
     return SingleChildScrollView(
       child: Column(
@@ -781,7 +829,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           const SizedBox(height: 3),
           Text(
             hasDiff
-                ? '${t.executor} 交付了修改 · 涉及「${(t.output ?? []).map((c) => _sectionTitle(c.sectionId)).join('、')}」'
+                ? '${t.executor} 交付了修改 · 涉及「${(t.output ?? []).map((c) => _sectionTitle(c.target)).join('、')}」'
                 : '${t.executor} 提交了交付说明，等你拍板',
             style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A9A)),
           ),
@@ -799,7 +847,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: FilledButton(
-                  onPressed: () => _gotoSection(t.output![0].sectionId),
+                  onPressed: () => _gotoSection(t.output![0].target),
                   child: const Text('在方案中查看修改 →'),
                 ),
               ),
