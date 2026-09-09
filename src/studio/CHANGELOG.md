@@ -4,6 +4,7 @@
 
 ### Added
 
+- studio 日志更新平台化首批模块（lib/journal/）：红线自检（oc_/ou_ ID、飞书链接、真实姓名平台侧注入、经营敏感词）、来源群分流与同日合并、Doc→Markdown 写回序列化，附 11 例单测；飞书连接器与派活接线待落位决策
 - CoWork 工作台占位骨架：核心对象定为 Workspace——流程 DAG 编排工作流程 + 单上下文；Workspace 间保持独立，先跑通量潮自己的工作流，跨 Workspace 委派为远期形态
 - 工作台首屏：从 examples/studio v3 移植 CoWork 交互——方案工作物居中、内联 diff 验收（通过合入 / 驳回回传意见）、版本记录、河床自动流转（就绪云任务自动开工交付，自动衔接标注「原为人工搬运」）、意图派活（预置意图，听不懂直说）
 - 模型层 lib/models.dart：Doc / Change / Task / WorkspaceState（概念契约最小 schema，含 seed 数据）

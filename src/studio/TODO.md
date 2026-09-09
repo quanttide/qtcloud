@@ -12,16 +12,16 @@
 
 ## 2 分流与工作物映射（复用 Doc）
 
-- [ ] 来源群 → 业务线目录映射表（量潮实训基地→qtclass、闲聊水库→按内容判断、兜底 default），配置在平台侧
-- [ ] 目标工作物 = `<业务线>/YYYY-MM-DD.md` 的 Doc，一个来源群对应一个 DocSection
-- [ ] 同日已有文件 = 向同一 Doc 追加 Change（`before` 为空，章节末尾追加），不新建工作物
+- [x] 来源群 → 业务线目录映射表（量潮实训基地→qtclass、闲聊水库→按内容判断、兜底 default），配置在平台侧（`lib/journal/journal.dart`）
+- [x] 目标工作物 = `<业务线>/YYYY-MM-DD.md` 的 Doc，一个来源群对应一个 DocSection（`JournalSection.section`）
+- [x] 同日已有文件 = 向同一 Doc 追加 Change（`before` 为空，章节末尾追加），不新建工作物（`mergeJournalSection`）
 
 ## 3 红线自检（新写）
 
-- [ ] `oc_` / `ou_` 等 ID 模式检测
-- [ ] 真实姓名、经营敏感信息、内部链接检测规则
-- [ ] 代称映射表配置在平台侧，不入仓库
-- [ ] 自检不通过的段落拦在闸门之前，人工兜底
+- [x] `oc_` / `ou_` 等 ID 模式检测（`lib/journal/redline.dart`）
+- [x] 真实姓名、经营敏感信息、内部链接检测规则
+- [x] 代称映射表配置在平台侧，不入仓库（`RedLineChecker(realNames: …)` 平台侧注入）
+- [x] 自检不通过的段落拦在闸门之前，人工兜底
 
 ## 4 流程编排（复用 Workflow）
 
@@ -31,12 +31,13 @@
 
 ## 5 写回（新写）
 
-- [ ] Doc → Markdown 序列化：文件顶部写「来源：…群」，章节标题标注来源群与时间，事实 + 原话写法，复盘用引用块
-- [ ] 写入 journal 仓库并提交（Conventional Commits），主仓库指针同步
+- [x] Doc → Markdown 序列化：文件顶部写「来源：…群」，章节标题标注来源群与时间，事实 + 原话写法，复盘用引用块（`serializeJournal`）
+- [ ] 写入 journal 仓库并提交（Conventional Commits），主仓库指针同步——待连接器落位
 
 ## 6 验收
 
 - [ ] 端到端走一遍：一次派活产生当日日志，验收通过后 journal 出现新段落，驳回则 journal 不动
+- [x] 模块单测：红线自检、分流、同日合并、写回格式（`test/journal_test.dart`，11 例）
 - [ ] 按 AGENTS.md 交互设计评判原则走查并自评分
 - [ ] 更新 CHANGELOG.md
 
