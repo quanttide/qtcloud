@@ -4,7 +4,7 @@
 
 ## 交互设计评判原则
 
-适用于本仓库一切带界面的交付物（site、studio、examples），评审与实现都按此执行。
+适用于本仓库一切带界面的交付物（site、studio、examples），评审与实现都按此执行。本节十二条已随 `qtfounder` CLI 发布为 `design-review` Skill（`qtfounder design principles` 看全文，`qtfounder agent skill install design-review` 装到系统位置）；其中第九条字号与第五条主按钮可机械走查：`qtfounder design review <目录或文件>`。两处文字改动要同步，以本仓为准。
 
 ### 先立问题，再做屏幕
 
