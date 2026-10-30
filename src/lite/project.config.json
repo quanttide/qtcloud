@@ -1,6 +1,6 @@
 {
   "miniprogramRoot": "./dist",
-  "projectname": "lite",
+  "projectname": "qtcloud-lite",
   "description": "量潮云 lite 小程序",
   "appid": "touristappid",
   "setting": {
