@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- studio 功能全部移除，仅保留入口壳：工作台首屏（WorkspaceScreen）、CoWork 模型层（lib/models/：Doc/Change/Task/Workflow/Workspace）、journal 日志模块（lib/journal/：红线自检、分流合并、写回序列化）、workspace_seed.json 资产与 11 例 journal 单测；main.dart 收敛为占位入口
+
 ### Added
 
 - studio 日志更新平台化首批模块（lib/journal/）：红线自检（oc_/ou_ ID、飞书链接、真实姓名平台侧注入、经营敏感词）、来源群分流与同日合并、Doc→Markdown 写回序列化，附 11 例单测；飞书连接器与派活接线待落位决策

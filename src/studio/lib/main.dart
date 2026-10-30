@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'screens/workspace_screen.dart';
 import 'theme.dart';
 
 void main() {
@@ -14,7 +13,19 @@ class QtCloudApp extends StatelessWidget {
     return MaterialApp(
       title: '量潮云工作台',
       theme: AppTheme.lightTheme,
-      home: const WorkspaceScreen(),
+      home: const _Entry(),
+    );
+  }
+}
+
+/// 入口占位：功能已移除，仅保留可启动的壳。
+class _Entry extends StatelessWidget {
+  const _Entry();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: Text('量潮云工作台', style: TextStyle(fontSize: 20))),
     );
   }
 }

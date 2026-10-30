@@ -1,5 +1,5 @@
 name: qtcloud_studio
-description: "量潮云工作台 - CoWork"
+description: "量潮云工作台（仅入口壳）"
 publish_to: 'none'
 version: 0.1.0-alpha.1
 
@@ -17,5 +17,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/workspace_seed.json
