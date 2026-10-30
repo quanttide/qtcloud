@@ -13,7 +13,7 @@ import '../models/workspace.dart';
 /// 工作台首屏：方案工作物居中，任务、验收、版本围绕它转。
 /// 河床规则：状态由规则推进（上游验收通过 → 下游云任务自动开工交付），
 /// 人只在闸门（验收）出现；每个自动衔接都标注「原为人工搬运」。
-/// 交互对齐 examples/studio/index.html v3，设计见 docs/dev-guide/studio.md。
+/// 交互对齐 examples/studio/index.html v3，设计见主仓 data/intention/qtfounder/studio.md。
 class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({super.key});
 

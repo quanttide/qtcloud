@@ -2,7 +2,7 @@
 
 量潮云工作台（Flutter 客户端），按 CoWork 形态规划：自然语言派活 → 任务拆解 → 各云执行 → 交付验收。门户已迁移至 qtcloud-site（cloud.quanttide.com），规划见 `ROADMAP.md`。
 
-首屏已从 `examples/studio` v3 移植：方案工作物居中、内联 diff 验收、河床自动流转（就绪云任务自动开工，人只在闸门出现）。设计与评判原则见 `docs/dev-guide/studio.md` 与仓库根 `AGENTS.md`。
+首屏已从 `examples/studio` v3 移植：方案工作物居中、内联 diff 验收、河床自动流转（就绪云任务自动开工，人只在闸门出现）。设计与评判原则见主仓 `data/intention/qtfounder/studio.md`（自本仓 `docs/dev-guide/studio.md` 迁出）与仓库根 `AGENTS.md`。
 
 ## 开发
 
