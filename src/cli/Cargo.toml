@@ -1,11 +1,20 @@
 [package]
 name = "qtcloud-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2021"
+description = "量潮云命令行工具"
+authors = ["QuantTide <opensource@quanttide.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/quanttide/qtcloud"
+readme = "README.md"
+keywords = ["qtcloud", "quanttide", "cloud", "cli"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "qtcloud"
 path = "src/main.rs"
 
 [dependencies]
-qtcloud-devops-cli = "0.8"
+agent-skills-rs = "0.3"
+clap = { version = "4", features = ["derive"] }
+qtcloud-devops-cli = "0.11"

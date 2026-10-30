@@ -217,7 +217,7 @@ validate_release "v0.4.0"
 在 devops-release 的预检查步骤中调用：
 
 ```bash
-# 在 .agents/skills/devops-release/SKILL.md 中
+# 在 src/cli/skills/qtcloud-devops-release/SKILL.md 中
 # 步骤 1. 预检查
 
 # 调用 devops-review
