@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- 定位明文：职能执行仓（execute / connect）——README 与 AGENTS 补定位节；journal / profile 禁止移入本仓（住主仓库 `data/` 数据层）
+
 ## [0.1.0-alpha.1] - 2026-08-08
 
 ### Added

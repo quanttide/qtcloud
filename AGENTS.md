@@ -1,6 +1,12 @@
 # AGENTS.md
 
-本仓库是量潮云产品仓库：门户（`src/site`）、CoWork 工作台（`src/studio`）、服务端骨架（`src/provider`）、原型（`examples/`）。通用协作约定与 SKILL 索引见 `.agents/README.md` 与主仓库 `AGENTS.md`。
+本仓库是量潮云产品仓库：DevOps CLI（`src/cli`）、成员被动端（`src/lite`）、门户（`src/site`）、CoWork 工作台（`src/studio`）、服务端骨架（`src/provider`）、原型（`examples/`）。通用协作约定与 SKILL 索引见 `.agents/README.md` 与主仓库 `AGENTS.md`。
+
+## 定位：职能执行仓
+
+围绕 execute / connect 等职能：发布流水线（`.github/workflows/` 四条）与 DevOps CLI 执行发布（execute），数据连接与成员消息推送（connect）。价值在触发执行——跑成了才算数。
+
+范畴 / 资产（journal、profile 等记录与状态）住 quanttide-tech `data/` 数据层：**禁止移入本仓，也禁止移出 `data/`**，以主仓库 AGENTS.md 为准。
 
 ## 交互设计评判原则
 
