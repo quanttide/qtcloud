@@ -24,8 +24,12 @@ resource "alicloud_oss_bucket_public_access_block" "lite" {
   block_public_access = false
 }
 
-# 公共读：站点静态资源分发；如后续接入 CDN 回源鉴权可改回 private
+# 公共读：站点静态资源分发；如后续接入 CDN 回源鉴权可改回 private。
+# 必须等阻止公共访问关掉再生效——首版两者同批创建时 ACL 被静默留在 private
+# （2026-11-21 实测：BlockPublicAccess=false 但 Grant=private，站点 403），
+# 所以显式声明依赖顺序。
 resource "alicloud_oss_bucket_acl" "lite" {
-  bucket = alicloud_oss_bucket.lite.bucket
-  acl    = "public-read"
+  bucket     = alicloud_oss_bucket.lite.bucket
+  acl        = "public-read"
+  depends_on = [alicloud_oss_bucket_public_access_block.lite]
 }
