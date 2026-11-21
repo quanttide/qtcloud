@@ -56,10 +56,15 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
   }
 
 
+  const h5Config: UserConfigExport<'webpack5'> = {
+    outputRoot: 'dist-h5',
+    router: { mode: 'hash' }
+  }
+
   if (process.env.NODE_ENV === 'development') {
     // 本地开发构建配置（不混淆压缩）
-    return merge({}, baseConfig, devConfig)
+    return merge({}, baseConfig, devConfig, h5Config)
   }
   // 生产构建配置（默认开启压缩混淆等）
-  return merge({}, baseConfig, prodConfig)
+  return merge({}, baseConfig, prodConfig, h5Config)
 })
